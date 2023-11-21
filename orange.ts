@@ -1,76 +1,76 @@
-import axios from 'axios';
+import * as https from 'https';
+import * as request from 'request';
 
 export class ShortMessageService {
-    private clientId: string;
-    //client token
-    private clientSecret: string;
-    //Le numéro Orange que vous avez configuré pour l'envoi de SMS
-    private phoneNumber: string;
+    private _token: string;
+    private _phoneNumber: string;
 
-    /**
-     * 
-     * @param _clientId 
-     * @param _clientSecret 
-     * @param _phoneNumber 
-     */
-    constructor(_clientId: string, _clientSecret: string, _phoneNumber: string) {
-        this.clientId = _clientId;
-        this.clientSecret = _clientSecret;
-        this.phoneNumber = _phoneNumber;
+    constructor(token: string, phoneNumber: string) {
+        this._token = token;
+        this._phoneNumber = phoneNumber;
     }
 
-    /**
-     * Recuperation de token generer
-     * @returns token
-     */
-    private async getToken() {
-        try {
-            const response = await axios.post('https://api.orange.com/oauth/v3/token', null, {
-                params: {
-                    grant_type: 'client_credentials',
-                    client_id: this.clientId,
-                    client_secret: this.clientSecret,
-                },
+    public sendSms(destinateur: string, message: string) {
+        let credentials: string = this._token;
+        let postData: string = "grant_type=client_credentials";
+        let options: https.RequestOptions = {
+            host: 'api.orange.com',
+            path: '/oauth/v3/token',
+            method: 'POST',
+            headers: {
+                'Authorization': credentials,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData).toString()
+            }
+        };
+        let req = https.request(options, (response) => {
+            response.setEncoding('utf8');
+            let responseData = '';
+            response.on('data', (data) => {
+                responseData += data;
             });
-            return response.data.access_token;
-        } catch (error) {
-            console.log(error);
-        }
+            response.on('end', () => {
+                let result = JSON.parse(responseData);
+                this.send(result.access_token, destinateur, message);
+            });
+        }).on('error', (e) => { });
+        req.write(postData);
+        req.end();
     }
 
-    /**
-     * 
-     * @param phoneDestinateur : Ajout de numéro de destinateur {+243976729561}
-     * @param message 
-     */
-    public async sendSMS(phoneDestinateur: string, message:string){
-        try {
-            let accessToken = await this.getToken();
-            const response = await axios.post(
-                'https://api.orange.com/smsmessaging/v1/outbound/tel:' + this.phoneNumber + '/requests',
-                {
-                    outboundSMSMessageRequest: {
-                        address: 'tel:' + phoneDestinateur,
-                        senderAddress: 'tel:' + this.phoneNumber,
-                        senderName: 'VotreNom',
-                        outboundSMSTextMessage: {
-                            message: message,
-                        },
-                    },
-                },
-                {
-                    headers: {
-                        Authorization: 'Bearer ' + accessToken,
-                        'Content-Type': 'application/json',
-                    },
+    private send(token: string, destinateur: string, message: string) {
+        let receiver = "tel:" + destinateur;
+        let sender = `tel:${this._phoneNumber}`;
+        let headers = {
+            'Authorization': "Bearer " + token,
+            'Content-Type': 'application/json'
+        };
+        let body = {
+            outboundSMSMessageRequest: {
+                address: receiver,
+                senderAddress: sender,
+                outboundSMSTextMessage: {
+                    message: message
                 }
-            );
-        
-            console.log('SMS envoyé avec succès:', response.data);
-        } catch (error) {
-            console.log(error);
-        }
+            }
+        };
+
+
+        let options = {
+            uri: `https://api.orange.com/smsmessaging/v1/outbound/tel:${this._phoneNumber}/requests`,
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(body)
+        };
+
+        request(options, (error:any, response:any) => {
+            if (!error && response.statusCode == 201) {
+                console.log(response.statusCode);
+            } else {
+                console.log(error);
+            }
+        });
+
     }
 }
-
 
